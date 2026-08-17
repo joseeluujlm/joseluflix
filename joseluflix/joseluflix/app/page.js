@@ -6,25 +6,11 @@ import { db, CHANNELS_DOC_PATH } from "../lib/firebase";
 import { groupChannels } from "../lib/m3uParser";
 
 // Abre el canal directamente en VLC (Android/FireTV/Android TV), en vez de
-// reproducirlo dentro de la propia app. Usa el mecanismo estándar de
-// Android para "pasarle" una URL a otra app instalada (intent://), y si
-// VLC no está instalado, cae de vuelta a su ficha en Google Play.
+// reproducirlo dentro de la propia app. VLC para Android registra su propio
+// esquema de enlace "vlc://" pensado exactamente para esto: basta con
+// anteponerlo a la URL original del stream.
 function openInVlc(channel) {
-  const url = channel.url;
-  const match = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.+)$/);
-
-  if (!match) {
-    window.open(url, "_blank");
-    return;
-  }
-
-  const [, scheme, rest] = match;
-  const fallback = encodeURIComponent(
-    "https://play.google.com/store/apps/details?id=org.videolan.vlc"
-  );
-  const intentUrl = `intent://${rest}#Intent;scheme=${scheme};package=org.videolan.vlc;S.browser_fallback_url=${fallback};end`;
-
-  window.location.href = intentUrl;
+  window.location.href = "vlc://" + channel.url;
 }
 
 export default function Home() {
