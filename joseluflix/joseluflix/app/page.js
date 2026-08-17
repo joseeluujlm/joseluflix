@@ -1,9 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db, CHANNELS_DOC_PATH } from "../lib/firebase";
 import { groupChannels } from "../lib/m3uParser";
+
+// Abre el canal directamente en VLC (Android/FireTV/Android TV), en vez de
+// reproducirlo dentro de la propia app. Usa el mecanismo estándar de
+// Android para "pasarle" una URL a otra app instalada (intent://), y si
+// VLC no está instalado, cae de vuelta a su ficha en Google Play.
+function openInVlc(channel) {
+  const url = channel.url;
+  const match = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.+)$/);
+
+  if (!match) {
+    window.open(url, "_blank");
+    return;
+  }
+
+  const [, scheme, rest] = match;
+  const fallback = encodeURIComponent(
+    "https://play.google.com/store/apps/details?id=org.videolan.vlc"
+  );
+  const intentUrl = `intent://${rest}#Intent;scheme=${scheme};package=org.videolan.vlc;S.browser_fallback_url=${fallback};end`;
+
+  window.location.href = intentUrl;
+}
 
 export default function Home() {
   const [channels, setChannels] = useState(null); // null = cargando
@@ -11,7 +33,6 @@ export default function Home() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [activeGroup, setActiveGroup] = useState("Todos");
-  const [playing, setPlaying] = useState(null);
 
   useEffect(() => {
     const ref = doc(db, ...CHANNELS_DOC_PATH);
@@ -141,7 +162,7 @@ export default function Home() {
             {filtered.map((ch) => (
               <button
                 key={ch.id}
-                onClick={() => setPlaying(ch)}
+                onClick={() => openInVlc(ch)}
                 style={{
                   background: "var(--bg-raised)",
                   border: "1px solid var(--line)",
@@ -190,99 +211,6 @@ export default function Home() {
         </>
       )}
 
-      {playing && <Player channel={playing} onClose={() => setPlaying(null)} />}
     </main>
-  );
-}
-
-function Player({ channel, onClose }) {
-  const videoRef = useRef(null);
-  const [playerError, setPlayerError] = useState("");
-
-  useEffect(() => {
-    let hls;
-    const video = videoRef.current;
-    if (!video) return;
-
-    const isM3U8 = /\.m3u8($|\?)/i.test(channel.url);
-
-    async function setup() {
-      if (isM3U8) {
-        const Hls = (await import("hls.js")).default;
-        if (Hls.isSupported()) {
-          hls = new Hls();
-          hls.loadSource(channel.url);
-          hls.attachMedia(video);
-          hls.on(Hls.Events.ERROR, (_evt, data) => {
-            if (data.fatal) setPlayerError("No se pudo reproducir este canal.");
-          });
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-          video.src = channel.url;
-        } else {
-          setPlayerError("Este dispositivo no soporta HLS.");
-        }
-      } else {
-        video.src = channel.url;
-      }
-      video.play().catch(() => {});
-    }
-    setup();
-
-    return () => {
-      if (hls) hls.destroy();
-    };
-  }, [channel]);
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.92)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 20
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 960, padding: 16 }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10
-          }}
-        >
-          <strong>{channel.name}</strong>
-          <button
-            onClick={onClose}
-            style={{
-              background: "var(--bg-raised)",
-              border: "1px solid var(--line)",
-              color: "var(--text)",
-              borderRadius: 8,
-              padding: "6px 12px"
-            }}
-          >
-            Cerrar ✕
-          </button>
-        </div>
-        <video
-          ref={videoRef}
-          controls
-          autoPlay
-          style={{ width: "100%", background: "#000", borderRadius: 8 }}
-        />
-        {playerError && (
-          <p style={{ color: "var(--danger)", marginTop: 10 }}>{playerError}</p>
-        )}
-      </div>
-    </div>
   );
 }
