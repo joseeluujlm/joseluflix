@@ -63,3 +63,32 @@ button {
     transition: none !important;
   }
 }
+
+/* Filas horizontales estilo Netflix */
+.channel-tile:hover,
+.channel-tile:focus-visible {
+  transform: scale(1.07);
+  border-color: var(--accent) !important;
+  z-index: 5;
+}
+
+/* Ocultar la barra de scroll de las filas (queda igual de usable) */
+div[style*="overflow-x: auto"]::-webkit-scrollbar {
+  height: 0;
+}
+
+/* Flechas de desplazamiento de las filas: solo en pantallas con ratón */
+.row-arrow {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .row-arrow {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+  }
+  section:hover .row-arrow {
+    opacity: 1;
+  }
+}
