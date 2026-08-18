@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { db, CHANNELS_DOC_PATH } from "../../lib/firebase";
 import { parseM3U } from "../../lib/m3uParser";
 
@@ -15,6 +15,29 @@ export default function Admin() {
   const [preview, setPreview] = useState([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [publishedCount, setPublishedCount] = useState(null);
+
+  // Al entrar en el admin, recuperamos qué listas se publicaron la última
+  // vez, para poder quitar alguna o añadir más sin tener que volver a
+  // escribirlas todas desde cero.
+  useEffect(() => {
+    if (!authed) return;
+    (async () => {
+      try {
+        const ref = doc(db, ...CHANNELS_DOC_PATH);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          setPublishedCount((data.channels || []).length);
+          if (data.sourceUrls && data.sourceUrls.length > 0) {
+            setUrls(data.sourceUrls);
+          }
+        }
+      } catch (err) {
+        console.error("No se pudieron leer las listas anteriores:", err);
+      }
+    })();
+  }, [authed]);
 
   function handleLogin(e) {
     e.preventDefault();
@@ -154,6 +177,14 @@ export default function Admin() {
         Carga aquí la lista de canales. Al publicar, se sincroniza al instante en
         todos los móviles, tablets y TV boxes que tengan la app abierta.
       </p>
+
+      {publishedCount !== null && (
+        <p style={{ color: "var(--text-dim)", fontSize: 13 }}>
+          Ahora mismo hay <strong>{publishedCount}</strong> canales publicados,
+          cargados desde las URLs de abajo. Puedes quitar alguna (✕), añadir
+          más, y volver a pulsar "Cargar" + "Publicar".
+        </p>
+      )}
 
       <section style={{ marginTop: 24 }}>
         <label style={labelStyle}>URL de la lista M3U/M3U8</label>
