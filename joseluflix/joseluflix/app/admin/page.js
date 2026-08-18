@@ -50,11 +50,7 @@ export default function Admin() {
 
     for (const u of list) {
       try {
-        // Pasamos por nuestro proxy para evitar el bloqueo de CORS que dan
-        // muchos servidores de listas IPTV al pedirles el archivo directamente
-        // desde el navegador.
-        const proxied = "/api/proxy?url=" + encodeURIComponent(u);
-        const res = await fetch(proxied);
+        const res = await fetch(u);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const text = await res.text();
         const parsed = parseM3U(text);
