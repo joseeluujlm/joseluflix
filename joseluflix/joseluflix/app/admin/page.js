@@ -31,7 +31,11 @@ export default function Admin() {
     setLoading(true);
     setStatus("");
     try {
-      const res = await fetch(url.trim());
+      // Pasamos por nuestro propio proxy (el mismo que usa el reproductor)
+      // para evitar el bloqueo de CORS que dan muchos paneles IPTV al
+      // pedirles la lista directamente desde el navegador.
+      const proxied = "/api/proxy?url=" + encodeURIComponent(url.trim());
+      const res = await fetch(proxied);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const text = await res.text();
       setRawText(text);
