@@ -10,8 +10,7 @@ export default function Admin() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
-  // Varias fuentes: cada una es { id, url, status: 'idle'|'loading'|'ok'|'error', count }
-  const [sources, setSources] = useState([{ id: crypto.randomUUID(), url: "" }]);
+  const [urls, setUrls] = useState([""]);
   const [rawText, setRawText] = useState("");
   const [preview, setPreview] = useState([]);
   const [status, setStatus] = useState("");
@@ -27,68 +26,63 @@ export default function Admin() {
     }
   }
 
-  function addSourceField() {
-    setSources((prev) => [...prev, { id: crypto.randomUUID(), url: "" }]);
+  function updateUrl(index, value) {
+    setUrls((prev) => prev.map((u, i) => (i === index ? value : u)));
   }
 
-  function removeSourceField(id) {
-    setSources((prev) => prev.filter((s) => s.id !== id));
+  function addUrlField() {
+    setUrls((prev) => [...prev, ""]);
   }
 
-  function updateSourceUrl(id, value) {
-    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, url: value } : s)));
+  function removeUrlField(index) {
+    setUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function handleFetchAll() {
-    const urls = sources.map((s) => s.url.trim()).filter(Boolean);
-    if (urls.length === 0) return;
+  async function handleFetchFromUrl() {
+    const list = urls.map((u) => u.trim()).filter(Boolean);
+    if (list.length === 0) return;
 
     setLoading(true);
-    setStatus(`Cargando ${urls.length} lista(s)...`);
+    setStatus("");
 
     let merged = [];
-    const results = [];
+    let anyError = false;
 
-    for (const u of urls) {
+    for (const u of list) {
       try {
+        // Pasamos por nuestro proxy para evitar el bloqueo de CORS que dan
+        // muchos servidores de listas IPTV al pedirles el archivo directamente
+        // desde el navegador.
         const proxied = "/api/proxy?url=" + encodeURIComponent(u);
         const res = await fetch(proxied);
         if (!res.ok) throw new Error("HTTP " + res.status);
         const text = await res.text();
         const parsed = parseM3U(text);
-        // Prefijamos el id con el índice de la fuente para evitar
-        // colisiones si dos listas repiten el mismo tvg-id/nombre.
         const withUniqueIds = parsed.map((ch, i) => ({
           ...ch,
           id: `${merged.length + i}-${ch.id}`
         }));
         merged = merged.concat(withUniqueIds);
-        results.push(`✅ ${u.slice(0, 50)}${u.length > 50 ? "…" : ""}: ${parsed.length} canales`);
       } catch (err) {
-        results.push(`❌ ${u.slice(0, 50)}${u.length > 50 ? "…" : ""}: ${err.message}`);
+        anyError = true;
       }
     }
 
     setPreview(merged);
-    setStatus(results.join("\n") + `\n\nTotal combinado: ${merged.length} canales.`);
+    if (anyError) {
+      setStatus(
+        `Cargados ${merged.length} canales en total, pero alguna URL no se pudo descargar (puede ser CORS). Prueba a pegar su contenido M3U directamente en el cuadro de texto.`
+      );
+    } else {
+      setStatus(`Cargados ${merged.length} canales. Revisa y pulsa "Publicar".`);
+    }
     setLoading(false);
   }
 
   function handleParseRaw() {
     const parsed = parseM3U(rawText);
-    // El texto pegado a mano se AÑADE a lo que ya hubiera en la vista previa
-    // (de las URLs), no lo sustituye, así puedes combinar ambas fuentes.
-    setPreview((prev) => {
-      const offset = prev.length;
-      const withUniqueIds = parsed.map((ch, i) => ({ ...ch, id: `${offset + i}-${ch.id}` }));
-      return prev.concat(withUniqueIds);
-    });
-    setStatus(`${parsed.length} canales añadidos desde el texto pegado. Revisa y pulsa "Publicar".`);
-  }
-
-  function clearPreview() {
-    setPreview([]);
-    setStatus("Vista previa vaciada.");
+    setPreview(parsed);
+    setStatus(`${parsed.length} canales detectados. Revisa y pulsa "Publicar".`);
   }
 
   async function handlePublish() {
@@ -102,7 +96,7 @@ export default function Admin() {
       await setDoc(ref, {
         channels: preview,
         updatedAt: Date.now(),
-        sourceUrls: sources.map((s) => s.url.trim()).filter(Boolean)
+        sourceUrls: urls.map((u) => u.trim()).filter(Boolean)
       });
       setStatus(`✅ Publicado. ${preview.length} canales visibles ahora en todos los dispositivos.`);
     } catch (err) {
@@ -161,27 +155,25 @@ export default function Admin() {
         JOSELU<span>FLIX</span> · Panel de administración
       </h1>
       <p style={{ color: "var(--text-dim)" }}>
-        Carga aquí una o varias listas de canales. Al publicar, se combinan
-        en una sola y se sincronizan al instante en todos los móviles,
-        tablets y TV boxes que tengan la app abierta.
+        Carga aquí la lista de canales. Al publicar, se sincroniza al instante en
+        todos los móviles, tablets y TV boxes que tengan la app abierta.
       </p>
 
       <section style={{ marginTop: 24 }}>
-        <label style={labelStyle}>URLs de listas M3U/M3U8 (puedes añadir varias)</label>
+        <label style={labelStyle}>URL de la lista M3U/M3U8</label>
 
-        {sources.map((s, i) => (
-          <div key={s.id} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        {urls.map((u, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <input
-              value={s.url}
-              onChange={(e) => updateSourceUrl(s.id, e.target.value)}
-              placeholder={`https://.../lista${i > 0 ? i + 1 : ""}.m3u`}
+              value={u}
+              onChange={(e) => updateUrl(i, e.target.value)}
+              placeholder="https://.../lista.m3u"
               style={{ ...inputStyle, flex: 1 }}
             />
-            {sources.length > 1 && (
+            {urls.length > 1 && (
               <button
-                onClick={() => removeSourceField(s.id)}
+                onClick={() => removeUrlField(i)}
                 style={{ ...secondaryBtn, padding: "10px 14px" }}
-                aria-label="Quitar"
               >
                 ✕
               </button>
@@ -189,38 +181,33 @@ export default function Admin() {
           </div>
         ))}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button onClick={addSourceField} style={secondaryBtn}>
-            + Añadir otra lista
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={addUrlField} style={secondaryBtn}>
+            + Añadir otra URL
           </button>
-          <button onClick={handleFetchAll} disabled={loading} style={primaryBtn}>
-            {loading ? "Cargando…" : "Cargar todas"}
+          <button onClick={handleFetchFromUrl} disabled={loading} style={primaryBtn}>
+            {loading ? "Cargando…" : "Cargar"}
           </button>
         </div>
 
         <label style={{ ...labelStyle, marginTop: 20 }}>
-          ...o pega aquí contenido M3U directamente (se añade a lo ya cargado)
+          ...o pega aquí el contenido M3U directamente
         </label>
         <textarea
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
-          rows={6}
+          rows={8}
           placeholder="#EXTM3U..."
           style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }}
         />
         <button onClick={handleParseRaw} style={{ ...secondaryBtn, marginTop: 8 }}>
-          Añadir este texto a la vista previa
+          Analizar texto
         </button>
       </section>
 
       {preview.length > 0 && (
         <section style={{ marginTop: 24 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <h3 style={{ margin: 0 }}>Vista previa ({preview.length} canales)</h3>
-            <button onClick={clearPreview} style={{ ...secondaryBtn, padding: "6px 12px", fontSize: 12 }}>
-              Vaciar
-            </button>
-          </div>
+          <h3 style={{ marginBottom: 8 }}>Vista previa ({preview.length} canales)</h3>
           <div
             style={{
               maxHeight: 220,
@@ -261,11 +248,7 @@ export default function Admin() {
         {loading ? "Publicando…" : "Publicar en todos los dispositivos"}
       </button>
 
-      {status && (
-        <p style={{ marginTop: 14, color: "var(--text-dim)", whiteSpace: "pre-line", fontSize: 13 }}>
-          {status}
-        </p>
-      )}
+      {status && <p style={{ marginTop: 14, color: "var(--text-dim)" }}>{status}</p>}
     </main>
   );
 }
