@@ -54,3 +54,17 @@ export function groupChannels(channels) {
   }
   return groups;
 }
+
+// Clasifica un canal en "tv", "movies" o "series" a partir del nombre de su
+// categoría (group-title) en la lista M3U. Las listas IPTV no tienen un
+// campo estándar para esto, así que lo deducimos por palabras clave
+// habituales en español e inglés.
+const MOVIE_HINTS = ["pelicul", "movie", "cine", "vod", "film"];
+const SERIES_HINTS = ["serie", "series", "temporada", "season"];
+
+export function classifyCategory(groupName) {
+  const g = (groupName || "").toLowerCase();
+  if (SERIES_HINTS.some((h) => g.includes(h))) return "series";
+  if (MOVIE_HINTS.some((h) => g.includes(h))) return "movies";
+  return "tv";
+}
