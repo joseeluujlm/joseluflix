@@ -39,6 +39,60 @@ export default function Admin() {
     setSources((prev) => prev.map((s) => (s.id === id ? { ...s, url: value } : s)));
   }
 
+  // Si la URL es un archivo "en bruto" de GitHub (raw.githubusercontent.com),
+  // devuelve la misma ruta servida a través del espejo jsDelivr. GitHub
+  // limita cada vez más el acceso anónimo a raw.githubusercontent.com desde
+  // servidores en la nube (como el de nuestro proxy en Vercel), aunque
+  // funcione perfectamente desde un navegador normal. jsDelivr sirve el
+  // mismo contenido sin esa restricción.
+  function githubRawToJsDelivr(rawUrl) {
+    try {
+      const u = new URL(rawUrl);
+      if (u.hostname !== "raw.githubusercontent.com") return null;
+      const parts = u.pathname.split("/").filter(Boolean);
+
+      let user, repo, branch, filePath;
+      if (parts[2] === "refs" && parts[3] === "heads") {
+        // /user/repo/refs/heads/branch/resto/del/path
+        [user, repo] = parts;
+        branch = parts[4];
+        filePath = parts.slice(5).join("/");
+      } else {
+        // /user/repo/branch/resto/del/path
+        [user, repo, branch] = parts;
+        filePath = parts.slice(3).join("/");
+      }
+
+      if (!user || !repo || !branch || !filePath) return null;
+      return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${filePath}`;
+    } catch {
+      return null;
+    }
+  }
+
+  // Descarga una URL a través del proxy; si es de GitHub y falla, reintenta
+  // sola con el espejo jsDelivr antes de rendirse.
+  async function fetchListSmart(u) {
+    const tryUrl = async (target) => {
+      const proxied = "/api/proxy?url=" + encodeURIComponent(target);
+      const res = await fetch(proxied);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    };
+
+    try {
+      return { text: await tryUrl(u), via: u };
+    } catch (firstErr) {
+      const mirror = githubRawToJsDelivr(u);
+      if (!mirror) throw firstErr;
+      try {
+        return { text: await tryUrl(mirror), via: mirror };
+      } catch {
+        throw firstErr; // informamos del error original, más claro para el usuario
+      }
+    }
+  }
+
   async function handleFetchAll() {
     const urls = sources.map((s) => s.url.trim()).filter(Boolean);
     if (urls.length === 0) return;
@@ -51,11 +105,9 @@ export default function Admin() {
 
     for (const u of urls) {
       try {
-        const proxied = "/api/proxy?url=" + encodeURIComponent(u);
-        const res = await fetch(proxied);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const text = await res.text();
+        const { text, via } = await fetchListSmart(u);
         const parsed = parseM3U(text);
+        const viaNote = via !== u ? " (vía espejo jsDelivr)" : "";
         // Prefijamos el id con el índice de la fuente para evitar
         // colisiones si dos listas repiten el mismo tvg-id/nombre.
         const withUniqueIds = parsed.map((ch, i) => ({
@@ -63,7 +115,7 @@ export default function Admin() {
           id: `${merged.length + i}-${ch.id}`
         }));
         merged = merged.concat(withUniqueIds);
-        results.push(`✅ ${u.slice(0, 50)}${u.length > 50 ? "…" : ""}: ${parsed.length} canales`);
+        results.push(`✅ ${u.slice(0, 50)}${u.length > 50 ? "…" : ""}: ${parsed.length} canales${viaNote}`);
       } catch (err) {
         results.push(`❌ ${u.slice(0, 50)}${u.length > 50 ? "…" : ""}: ${err.message}`);
       }
