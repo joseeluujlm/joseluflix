@@ -4,11 +4,19 @@
 //
 // Uso en el panel /admin, como una URL más:
 //   https://tu-dominio.vercel.app/api/archive-movies
-//   https://tu-dominio.vercel.app/api/archive-movies?q=terror&rows=30
+//   https://tu-dominio.vercel.app/api/archive-movies?q=terror&page=2
 //
 // Parámetros opcionales:
-//   q     -> palabra de búsqueda (título, tema...). Por defecto: sin filtro.
-//   rows  -> cuántas películas traer (por defecto 24, máx. 60).
+//   q     -> palabra de búsqueda dentro de las películas en español (por
+//            defecto, sin filtro: trae todo lo disponible en español).
+//   page  -> página de resultados (empieza en 1). Como el catálogo completo
+//            es demasiado grande para traerlo de una sola vez (el servidor
+//            tiene un límite de tiempo por petición), cada llamada trae un
+//            bloque de películas. Sube el número de página para ir
+//            consiguiendo más tandas (page=2, page=3...) y publícalas todas
+//            juntas desde el admin usando "Añadir otra lista" varias veces.
+//   rows  -> cuántas películas trae cada página (por defecto 24, máx. 40 —
+//            limitado por el tiempo máximo de una función serverless).
 
 export const dynamic = "force-dynamic";
 
@@ -40,17 +48,19 @@ async function findMp4(identifier) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim();
-  const rows = Math.min(parseInt(searchParams.get("rows") || "24", 10) || 24, 60);
+  const page = Math.max(parseInt(searchParams.get("page") || "1", 10) || 1, 1);
+  const rows = Math.min(parseInt(searchParams.get("rows") || "24", 10) || 24, 40);
 
   const query =
     (q ? `${q} AND ` : "") +
-    "mediatype:(movies) AND collection:(feature_films OR moviesandfilms OR " +
-    "opensource_movies OR classic_tv) AND licenseurl:*";
+    "mediatype:(movies) AND (language:(Spanish) OR language:(spa) OR language:(español)) " +
+    "AND licenseurl:*";
 
   const searchUrl =
     `${SEARCH_URL}?q=${encodeURIComponent(query)}` +
     `&fl[]=identifier&fl[]=title` +
-    `&rows=${rows}&output=json`;
+    `&sort[]=downloads+desc` +
+    `&rows=${rows}&page=${page}&output=json`;
 
   let items = [];
   try {
@@ -78,7 +88,7 @@ export async function GET(request) {
     const title = (item.title || item.identifier).replace(/[\r\n]/g, " ");
     const logo = THUMB_URL + item.identifier;
     lines.push(
-      `#EXTINF:-1 tvg-logo="${logo}" group-title="PELICULAS (Archive.org - Dominio público)",${title}`
+      `#EXTINF:-1 tvg-logo="${logo}" group-title="PELICULAS (Archive.org - Español, Dominio público)",${title}`
     );
     lines.push(item.mp4Url);
   }
