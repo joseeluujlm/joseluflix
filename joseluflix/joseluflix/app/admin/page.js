@@ -5,13 +5,17 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { db, CHANNELS_DOC_PATH } from "../../lib/firebase";
 import { parseM3U } from "../../lib/m3uParser";
 
+const PLACEHOLDER_TEMPLATE = `#EXTM3U
+#EXTINF:-1 tvg-logo="" group-title="TV",NOMBRE DEL CANAL
+http://enlace-del-canal-aqui`;
+
 export default function Admin() {
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
   const [urls, setUrls] = useState([""]);
-  const [rawText, setRawText] = useState("");
+  const [rawText, setRawText] = useState(PLACEHOLDER_TEMPLATE);
   const [preview, setPreview] = useState([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
